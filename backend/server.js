@@ -2,57 +2,79 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const { MongoClient } = require("mongodb");
-require("./scheduler");
+const { Pool } = require("pg");
+
 const app = express();
 
 const PORT = process.env.PORT || 5000;
 
-const mongoClient = new MongoClient(process.env.MONGODB_URI);
-
 app.use(cors());
 app.use(express.json());
 
-let collection;
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
 
-// Connect to MongoDB
 async function connectDatabase() {
-    await mongoClient.connect();
+    try {
+        const result = await pool.query("SELECT NOW()");
 
-    console.log("Connected to MongoDB Atlas.");
+        console.log("Connected to PostgreSQL.");
+        console.log("Database time:", result.rows[0].now);
+    } catch (error) {
+        console.error("PostgreSQL connection failed ❌");
+        console.error(error.message);
 
-    const database = mongoClient.db("aurify_lbma_poc");
-
-    collection = database.collection("lbma_fixings");
-
-    console.log("Database: aurify_lbma_poc");
-    console.log("Collection: lbma_fixings");
+        process.exit(1);
+    }
 }
 
-// Health check
+
+// ==========================================
+// ROOT
+// ==========================================
+
 app.get("/", (req, res) => {
     res.json({
         status: "success",
-        message: "Aurify LBMA POC API is running"
+        message: "Aurify LBMA POC API is running",
+        database: "PostgreSQL"
     });
 });
 
-// Get latest fixing
+
+// ==========================================
+// LATEST FIXING
+// ==========================================
+
 app.get("/api/lbma/latest", async (req, res) => {
 
     try {
 
-        const latest = await collection
-            .find({})
-            .sort({ date: -1 })
-            .limit(1)
-            .next();
+        const result = await pool.query(`
+            SELECT
+                date,
+                am_usd_oz,
+                pm_usd_oz,
+                source,
+                retrieved_at
+            FROM lbma_fixings
+            ORDER BY date DESC
+            LIMIT 1
+        `);
 
-        if (!latest) {
+        if (result.rows.length === 0) {
+
             return res.status(404).json({
                 message: "No fixing data found"
             });
+
         }
+
+        const latest = result.rows[0];
 
         res.json({
             date: latest.date,
@@ -64,42 +86,70 @@ app.get("/api/lbma/latest", async (req, res) => {
 
     } catch (error) {
 
-        console.error(error);
+        console.error("Latest fixing error:", error);
 
         res.status(500).json({
             message: "Failed to retrieve latest fixing"
         });
+
     }
+
 });
 
-// Get fixing history
+
+// ==========================================
+// FIXING HISTORY
+// ==========================================
+
 app.get("/api/lbma/history", async (req, res) => {
 
     try {
 
-        const history = await collection
-            .find({})
-            .sort({ date: -1 })
-            .toArray();
+        const result = await pool.query(`
+            SELECT
+                date,
+                am_usd_oz,
+                pm_usd_oz,
+                source,
+                source_url,
+                retrieved_at
+            FROM lbma_fixings
+            ORDER BY date DESC
+        `);
 
-        res.json(history);
+        res.json(result.rows);
 
     } catch (error) {
 
-        console.error(error);
+        console.error("History error:", error);
 
         res.status(500).json({
             message: "Failed to retrieve fixing history"
         });
+
     }
+
 });
 
-// Start server
+
+// ==========================================
+// START SERVER
+// ==========================================
+
 async function startServer() {
 
     try {
 
+        // ------------------------------------------
+        // Connect to PostgreSQL first
+        // ------------------------------------------
+
         await connectDatabase();
+
+
+        // ------------------------------------------
+        // Start API
+        // ------------------------------------------
 
         app.listen(PORT, () => {
 
@@ -107,20 +157,46 @@ async function startServer() {
             console.log("==============================");
             console.log("Aurify LBMA POC API");
             console.log("==============================");
-            console.log(`Server running on http://localhost:${PORT}`);
+
+            console.log(
+                `Server running on http://localhost:${PORT}`
+            );
+
             console.log("");
-            console.log("Latest fixing:");
-            console.log(`http://localhost:${PORT}/api/lbma/latest`);
+            console.log(
+                `Latest fixing: http://localhost:${PORT}/api/lbma/latest`
+            );
+
             console.log("");
-            console.log("Fixing history:");
-            console.log(`http://localhost:${PORT}/api/lbma/history`);
+            console.log(
+                `Fixing history: http://localhost:${PORT}/api/lbma/history`
+            );
+
+            console.log("");
+            console.log("Database: PostgreSQL");
+            console.log("Table: lbma_fixings");
+
         });
+
+
+        // ------------------------------------------
+        // Start LBMA scheduler
+        // ------------------------------------------
+
+        console.log("");
+        console.log("==============================");
+        console.log("Starting LBMA Scheduler");
+        console.log("==============================");
+
+        require("./scheduler");
 
     } catch (error) {
 
         console.error("Failed to start API ❌");
         console.error(error.message);
+
     }
+
 }
 
 startServer();

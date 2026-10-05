@@ -26,8 +26,8 @@ import "./App.css";
 
 
 
-const API_BASE = "https://aurify-lbma-poc.onrender.com/api/lbma";
 
+const API_BASE = "http://localhost:5000/api/lbma";
 
 
 /* =========================================================
@@ -802,70 +802,44 @@ function formatPrice(value) {
 }
 
 
-  function formatDate(dateString) {
+function formatDate(dateString) {
+    if (!dateString) return "-";
 
-    if (!dateString) return "-";
+    const date = new Date(dateString);
 
+    if (Number.isNaN(date.getTime())) {
+        return "-";
+    }
 
-
-    const date = new Date(
-
-      `${dateString}T00:00:00`
-
-    );
-
-
-
-    return date.toLocaleDateString(
-
-      "en-US",
-
-      {
-
-        month: "short",
-
-        day: "2-digit",
-
-        year: "numeric",
-
-      }
-
-    );
-
-  }
-
-
+    return date.toLocaleDateString(
+        "en-US",
+        {
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
+            timeZone: "Asia/Dubai"
+        }
+    );
+}
 
   function formatChartDate(dateString) {
+    if (!dateString) return "";
 
-    if (!dateString) return "";
+    const date = new Date(dateString);
 
+    if (Number.isNaN(date.getTime())) {
+        return "";
+    }
 
-
-    const date = new Date(
-
-      `${dateString}T00:00:00`
-
-    );
-
-
-
-    return date.toLocaleDateString(
-
-      "en-US",
-
-      {
-
-        month: "short",
-
-        day: "numeric",
-
-      }
-
-    );
-
-  }
-
+    return date.toLocaleDateString(
+        "en-US",
+        {
+            month: "short",
+            day: "numeric",
+            timeZone: "Asia/Dubai"
+        }
+    );
+}
 
 
   /* =======================================================

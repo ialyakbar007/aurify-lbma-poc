@@ -2,44 +2,19 @@ require("dotenv").config();
 
 const axios = require("axios");
 const cheerio = require("cheerio");
-const { MongoClient } = require("mongodb");
+const pool = require("./db");
 
 const SOURCE_URL =
     "https://www.alabyadjewellers.com/bullion/en/live-rate";
 
-const mongoClient = new MongoClient(
-    process.env.MONGODB_URI
-);
-
-
-/*
-=========================================================
-HELPER: EXTRACT PRICE FROM AL ABYAD CELL
-=========================================================
-
-Example input:
-
-4163.45 05-10-2026 01:30 PM
-
-Returns:
-
-4163.45
-=========================================================
-*/
-
 function extractPrice(value) {
-
-    if (!value) {
-        return null;
-    }
+    if (!value) return null;
 
     const match = value.match(
         /^\s*([\d,]+(?:\.\d+)?)/
     );
 
-    if (!match) {
-        return null;
-    }
+    if (!match) return null;
 
     const number = Number(
         match[1].replace(/,/g, "")
@@ -50,35 +25,14 @@ function extractPrice(value) {
         : null;
 }
 
-
-/*
-=========================================================
-HELPER: EXTRACT DATE FROM AL ABYAD CELL
-=========================================================
-
-Example:
-
-4163.45 05-10-2026 01:30 PM
-
-Returns:
-
-2026-10-05
-=========================================================
-*/
-
 function extractDate(value) {
-
-    if (!value) {
-        return null;
-    }
+    if (!value) return null;
 
     const match = value.match(
         /(\d{2})-(\d{2})-(\d{4})/
     );
 
-    if (!match) {
-        return null;
-    }
+    if (!match) return null;
 
     const day = match[1];
     const month = match[2];
@@ -87,22 +41,7 @@ function extractDate(value) {
     return `${year}-${month}-${day}`;
 }
 
-
-/*
-=========================================================
-HELPER: GET TODAY'S DATE IN LONDON
-=========================================================
-
-The fixing date belongs to London.
-
-Example:
-
-2026-10-05
-=========================================================
-*/
-
 function getLondonDate() {
-
     return new Intl.DateTimeFormat(
         "en-CA",
         {
@@ -114,28 +53,19 @@ function getLondonDate() {
     ).format(new Date());
 }
 
-
-/*
-=========================================================
-FETCH AL ABYAD LBMA FIXING
-=========================================================
-*/
-
 async function fetchLatestFixing() {
 
     console.log(
-        "Fetching latest fixing from Al Abyad..."
+        "Fetching fixing from Al Abyad..."
     );
 
     const response = await axios.get(
         SOURCE_URL,
         {
             timeout: 15000,
-
             headers: {
                 "User-Agent":
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154.0.0.0 Safari/537.36",
-
                 "Accept":
                     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
             }
@@ -146,45 +76,20 @@ async function fetchLatestFixing() {
         `Al Abyad response status: ${response.status}`
     );
 
-
-    const $ = cheerio.load(
-        response.data
-    );
-
-
-    /*
-    =====================================================
-    TODAY'S LONDON FIXING DATE
-    =====================================================
-    */
+    const $ = cheerio.load(response.data);
 
     const todayLondon =
         getLondonDate();
-
 
     console.log(
         `Today's London fixing date: ${todayLondon}`
     );
 
-
     let amFix = null;
-
     let pmFix = null;
-
-
-    /*
-    =====================================================
-    FIND THE LBMA LONDON TABLE
-    =====================================================
-    */
 
     $("table").each(
         (tableIndex, table) => {
-
-            /*
-            Stop if both today's values
-            have already been found.
-            */
 
             if (
                 amFix !== null &&
@@ -193,24 +98,10 @@ async function fetchLatestFixing() {
                 return;
             }
 
-
-            const tableText =
-                $(table)
-                    .text()
-                    .replace(/\s+/g, " ")
-                    .trim();
-
-
-            /*
-            We only want:
-
-            TODAY'S RATE - LBMA LONDON
-
-            containing:
-
-            GOLD AM Fix
-            GOLD PM Fix
-            */
+            const tableText = $(table)
+                .text()
+                .replace(/\s+/g, " ")
+                .trim();
 
             if (
                 !tableText.includes(
@@ -223,68 +114,34 @@ async function fetchLatestFixing() {
                 return;
             }
 
-
             console.log(
-                "\nFound Al Abyad LBMA fixing table."
+                "Found Al Abyad LBMA fixing table."
             );
-
-
-            /*
-            =================================================
-            FIND DATA ROWS
-            =================================================
-
-            Expected row:
-
-            [
-                "4163.45 05-10-2026 01:30 PM",
-                "4190.05 02-10-2026 06:00 PM",
-                "61.0350 02-10-2026 03:00 PM"
-            ]
-
-            IMPORTANT:
-
-            Cell 0 = GOLD AM Fix
-            Cell 1 = GOLD PM Fix
-            Cell 2 = SILVER Fix
-            =================================================
-            */
 
             $(table)
                 .find("tr")
                 .each(
                     (rowIndex, row) => {
 
-                        const cells =
-                            $(row)
-                                .find("td")
-                                .map(
-                                    (
-                                        i,
-                                        cell
-                                    ) =>
-                                        $(cell)
-                                            .text()
-                                            .replace(
-                                                /\s+/g,
-                                                " "
-                                            )
-                                            .trim()
-                                )
-                                .get();
-
+                        const cells = $(row)
+                            .find("td")
+                            .map(
+                                (i, cell) =>
+                                    $(cell)
+                                        .text()
+                                        .replace(
+                                            /\s+/g,
+                                            " "
+                                        )
+                                        .trim()
+                            )
+                            .get();
 
                         if (
                             cells.length < 2
                         ) {
                             return;
                         }
-
-
-                        /*
-                        Make sure this is actually
-                        an AM/PM gold fixing row.
-                        */
 
                         const amPrice =
                             extractPrice(
@@ -296,7 +153,6 @@ async function fetchLatestFixing() {
                                 cells[0]
                             );
 
-
                         const pmPrice =
                             extractPrice(
                                 cells[1]
@@ -307,12 +163,6 @@ async function fetchLatestFixing() {
                                 cells[1]
                             );
 
-
-                        /*
-                        Ignore rows that don't contain
-                        valid fixing information.
-                        */
-
                         if (
                             amPrice === null &&
                             pmPrice === null
@@ -320,15 +170,11 @@ async function fetchLatestFixing() {
                             return;
                         }
 
-
                         console.log(
                             "\nAl Abyad fixing row:"
                         );
 
-                        console.log(
-                            cells
-                        );
-
+                        console.log(cells);
 
                         console.log(
                             `AM price: ${amPrice}`
@@ -346,75 +192,35 @@ async function fetchLatestFixing() {
                             `PM date: ${pmDate}`
                         );
 
-
-                        /*
-                        =================================================
-                        AM LOGIC
-                        =================================================
-
-                        Only accept AM if:
-
-                        AM date === today's London date
-                        */
-
+                        // Accept AM only if
+                        // its own date is today
                         if (
                             amPrice !== null &&
-                            amDate === todayLondon
+                            amDate ===
+                                todayLondon
                         ) {
-
                             amFix = {
-
-                                price:
-                                    amPrice,
-
-                                date:
-                                    amDate
+                                price: amPrice,
+                                date: amDate
                             };
-
                         }
 
-
-                        /*
-                        =================================================
-                        PM LOGIC
-                        =================================================
-
-                        Only accept PM if:
-
-                        PM date === today's London date
-
-                        If Al Abyad is showing yesterday's PM,
-                        it will NOT be saved as today's PM.
-                        */
-
+                        // Accept PM only if
+                        // its own date is today
                         if (
                             pmPrice !== null &&
-                            pmDate === todayLondon
+                            pmDate ===
+                                todayLondon
                         ) {
-
                             pmFix = {
-
-                                price:
-                                    pmPrice,
-
-                                date:
-                                    pmDate
+                                price: pmPrice,
+                                date: pmDate
                             };
-
                         }
-
-
                     }
                 );
         }
     );
-
-
-    /*
-    =====================================================
-    PRINT WHAT WAS FOUND
-    =====================================================
-    */
 
     console.log(
         "\n======================================"
@@ -432,55 +238,28 @@ async function fetchLatestFixing() {
         `London Date: ${todayLondon}`
     );
 
-
     if (amFix) {
-
         console.log(
             `AM FIX: ${amFix.price}`
         );
-
-        console.log(
-            `AM FIX DATE: ${amFix.date}`
-        );
-
     } else {
-
         console.log(
             "AM FIX: Not available for today"
         );
-
     }
 
-
     if (pmFix) {
-
         console.log(
             `PM FIX: ${pmFix.price}`
         );
-
-        console.log(
-            `PM FIX DATE: ${pmFix.date}`
-        );
-
     } else {
-
         console.log(
             "PM FIX: Not available for today"
         );
-
     }
 
-
-    /*
-    =====================================================
-    RETURN TODAY'S FIXING
-    =====================================================
-    */
-
     return {
-
-        date:
-            todayLondon,
+        date: todayLondon,
 
         am_usd_oz:
             amFix
@@ -490,86 +269,39 @@ async function fetchLatestFixing() {
         pm_usd_oz:
             pmFix
                 ? pmFix.price
-                : null,
-
-        am_date:
-            amFix
-                ? amFix.date
-                : null,
-
-        pm_date:
-            pmFix
-                ? pmFix.date
                 : null
     };
 }
-
-
-/*
-=========================================================
-SAVE TODAY'S FIXING TO MONGODB
-=========================================================
-*/
 
 async function saveLatestFixing(
     fixing
 ) {
 
-    await mongoClient.connect();
-
-
     console.log(
-        "\nConnected to MongoDB Atlas."
+        "\nConnecting to PostgreSQL..."
     );
 
-
-    const database =
-        mongoClient.db(
-            "aurify_lbma_poc"
+    // Check existing record
+    const existingResult =
+        await pool.query(
+            `
+            SELECT
+                date,
+                am_usd_oz,
+                pm_usd_oz,
+                source
+            FROM lbma_fixings
+            WHERE date = $1
+            `,
+            [fixing.date]
         );
-
-
-    const collection =
-        database.collection(
-            "lbma_fixings"
-        );
-
-
-    /*
-    =====================================================
-    ENSURE DATE IS UNIQUE
-    =====================================================
-    */
-
-    await collection.createIndex(
-        {
-            date: 1
-        },
-        {
-            unique: true
-        }
-    );
-
-
-    /*
-    =====================================================
-    FIND TODAY'S EXISTING DOCUMENT
-    =====================================================
-    */
 
     const existing =
-        await collection.findOne(
-            {
-                date:
-                    fixing.date
-            }
-        );
-
+        existingResult.rows[0];
 
     console.log(
-        "\nExisting today's document:"
+        "\nExisting today's record:"
     );
-
 
     if (existing) {
 
@@ -578,141 +310,100 @@ async function saveLatestFixing(
         );
 
         console.log(
-            `AM: ${
-                existing.am_usd_oz ??
-                "null"
-            }`
+            `AM: ${existing.am_usd_oz ?? "null"}`
         );
 
         console.log(
-            `PM: ${
-                existing.pm_usd_oz ??
-                "null"
-            }`
+            `PM: ${existing.pm_usd_oz ?? "null"}`
         );
 
         console.log(
-            `Source: ${
-                existing.source ??
-                "unknown"
-            }`
+            `Source: ${existing.source ?? "unknown"}`
         );
 
     } else {
 
         console.log(
-            "No document exists for today."
+            "No record exists for today."
         );
-
     }
 
-
     /*
-    =====================================================
-    BUILD UPDATE
-    =====================================================
-    */
-
-    const updateFields = {
-
-        source:
-            "Al Abyad",
-
-        source_url:
-            SOURCE_URL,
-
-        retrieved_at:
-            new Date()
-    };
-
-
-    /*
-    =====================================================
-    AM
-    =====================================================
-
-    If today's AM is available:
-
-        save AM
-
-    Otherwise:
-
-        don't change existing AM.
-    */
+     * If today's AM is available,
+     * update AM.
+     *
+     * If today's PM is available,
+     * update PM.
+     *
+     * Existing historical dates remain
+     * untouched.
+     */
 
     if (
         fixing.am_usd_oz !== null
     ) {
 
-        updateFields.am_usd_oz =
-            fixing.am_usd_oz;
+        await pool.query(
+            `
+            INSERT INTO lbma_fixings
+            (
+                date,
+                am_usd_oz,
+                source,
+                source_url,
+                retrieved_at
+            )
+            VALUES
+            ($1, $2, $3, $4, NOW())
 
+            ON CONFLICT (date)
+            DO UPDATE SET
+                am_usd_oz =
+                    EXCLUDED.am_usd_oz,
+                source =
+                    EXCLUDED.source,
+                source_url =
+                    EXCLUDED.source_url,
+                retrieved_at =
+                    EXCLUDED.retrieved_at
+            `,
+            [
+                fixing.date,
+                fixing.am_usd_oz,
+                "Al Abyad",
+                SOURCE_URL
+            ]
+        );
     }
-
-
-    /*
-    =====================================================
-    PM
-    =====================================================
-
-    If today's PM is available:
-
-        save PM
-
-    If today's PM is NOT available:
-
-        IMPORTANT:
-
-        Remove an incorrectly stored Al Abyad PM
-        from today's document.
-
-        This fixes the previous test where
-        02-10-2026 PM was incorrectly assigned
-        to 05-10-2026.
-    */
 
     if (
         fixing.pm_usd_oz !== null
     ) {
 
-        updateFields.pm_usd_oz =
-            fixing.pm_usd_oz;
-
+        await pool.query(
+            `
+            UPDATE lbma_fixings
+            SET
+                pm_usd_oz = $1,
+                source = $2,
+                source_url = $3,
+                retrieved_at = NOW()
+            WHERE date = $4
+            `,
+            [
+                fixing.pm_usd_oz,
+                "Al Abyad",
+                SOURCE_URL,
+                fixing.date
+            ]
+        );
     }
 
-
     /*
-    =====================================================
-    BUILD MONGODB UPDATE
-    =====================================================
-    */
-
-    const updateOperation = {
-
-        $set:
-            updateFields,
-
-        $setOnInsert:
-        {
-            date:
-                fixing.date
-        }
-
-    };
-
-
-    /*
-    =====================================================
-    REMOVE INCORRECT PM
-
-    Only do this when:
-
-    1. Today's PM is NOT available
-    2. Today's existing record came from Al Abyad
-
-    This protects your old 8853 historical records.
-    =====================================================
-    */
+     * If today's PM is not published,
+     * make sure today's Al Abyad record
+     * does not contain an old PM value.
+     */
 
     if (
         fixing.pm_usd_oz === null &&
@@ -720,73 +411,52 @@ async function saveLatestFixing(
         existing.source === "Al Abyad"
     ) {
 
-        updateOperation.$unset = {
-
-            pm_usd_oz: ""
-
-        };
-
+        await pool.query(
+            `
+            UPDATE lbma_fixings
+            SET
+                pm_usd_oz = NULL,
+                retrieved_at = NOW()
+            WHERE date = $1
+            `,
+            [fixing.date]
+        );
 
         console.log(
             "\nToday's PM is not published yet."
         );
-
-        console.log(
-            "Removing previously stored Al Abyad PM value."
-        );
-
     }
 
-
-    /*
-    =====================================================
-    UPSERT
-    =====================================================
-    */
-
-    await collection.updateOne(
-
-        {
-            date:
-                fixing.date
-        },
-
-        updateOperation,
-
-        {
-            upsert:
-                true
-        }
-    );
-
-
-    /*
-    =====================================================
-    READ FINAL DOCUMENT
-    =====================================================
-    */
-
-    const saved =
-        await collection.findOne(
-            {
-                date:
-                    fixing.date
-            }
+    // Read back saved record
+    const savedResult =
+        await pool.query(
+            `
+            SELECT
+                date,
+                am_usd_oz,
+                pm_usd_oz,
+                source,
+                retrieved_at
+            FROM lbma_fixings
+            WHERE date = $1
+            `,
+            [fixing.date]
         );
 
+    const saved =
+        savedResult.rows[0];
 
     console.log(
         "\n======================================"
     );
 
     console.log(
-        "MONGODB UPDATED"
+        "POSTGRESQL UPDATED"
     );
 
     console.log(
         "======================================"
     );
-
 
     console.log(
         `Date: ${saved.date}`
@@ -807,24 +477,13 @@ async function saveLatestFixing(
     );
 
     console.log(
-        `Source: ${
-            saved.source
-        }`
+        `Source: ${saved.source}`
     );
 
     console.log(
-        `Retrieved: ${
-            saved.retrieved_at
-        }`
+        `Retrieved: ${saved.retrieved_at}`
     );
 }
-
-
-/*
-=========================================================
-MAIN
-=========================================================
-*/
 
 async function main() {
 
@@ -835,29 +494,25 @@ async function main() {
         );
 
         console.log(
-            "AL ABYAD → MONGODB LIVE UPDATE"
+            "AL ABYAD → POSTGRESQL LIVE UPDATE"
         );
 
         console.log(
             "======================================"
         );
 
-
         const latestFixing =
             await fetchLatestFixing();
-
 
         await saveLatestFixing(
             latestFixing
         );
 
-
         console.log(
             "\nUPDATE COMPLETED SUCCESSFULLY! ✅"
         );
 
-    }
-    catch (error) {
+    } catch (error) {
 
         console.error(
             "\nUPDATE FAILED ❌"
@@ -867,16 +522,14 @@ async function main() {
             error.message
         );
 
-    }
-    finally {
+    } finally {
 
-        await mongoClient.close();
+        await pool.end();
 
         console.log(
-            "MongoDB connection closed."
+            "PostgreSQL connection closed."
         );
     }
 }
-
 
 main();
