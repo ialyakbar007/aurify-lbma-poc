@@ -771,38 +771,35 @@ function App() {
 
 
 
-  function formatPrice(value) {
+ function isValidPrice(value) {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return false;
+    }
 
-    if (
-
-      value === null ||
-
-      value === undefined
-
-    ) {
-
-      return "Not Published";
-
-    }
+    return Number.isFinite(
+        Number(value)
+    );
+}
 
 
+function formatPrice(value) {
 
-    return `$${Number(value).toLocaleString(
+    if (!isValidPrice(value)) {
+        return "Not Published";
+    }
 
-      "en-US",
-
-      {
-
-        minimumFractionDigits: 2,
-
-        maximumFractionDigits: 2,
-
-      }
-
-    )}`;
-
-  }
-
+    return `$${Number(value).toLocaleString(
+        "en-US",
+        {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }
+    )}`;
+}
 
 
   function formatDate(dateString) {
@@ -2331,36 +2328,17 @@ function App() {
 
 
 
-                        const am =
+                        const am = isValidPrice(
+  item.am_usd_oz
+)
+  ? Number(item.am_usd_oz)
+  : null;
 
-                          item.am_usd_oz !==
-
-                          null
-
-                            ? Number(
-
-                                item.am_usd_oz
-
-                              )
-
-                            : null;
-
-
-
-                        const pm =
-
-                          item.pm_usd_oz !==
-
-                          null
-
-                            ? Number(
-
-                                item.pm_usd_oz
-
-                              )
-
-                            : null;
-
+const pm = isValidPrice(
+  item.pm_usd_oz
+)
+  ? Number(item.pm_usd_oz)
+  : null;
 
 
                         const difference =
