@@ -27,7 +27,7 @@ import "./App.css";
 
 
 
-const API_BASE = "http://localhost:5000/api/lbma";
+const API_BASE = "https://aurify-lbma-poc.onrender.com/api/lbma";
 
 
 /* =========================================================
